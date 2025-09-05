@@ -16,7 +16,7 @@ import requests
 load_dotenv()
 # Llama 3 REST API endpoints configuration
 llama_3_70b_endpoint = "https://8i7715nbk7-vpce-0e881c3ec15437336.execute-api.eu-west-1.amazonaws.com/qwen3-30b-a3b"
-llama_3_key = os.environ.get("LLAMA3_API_KEY")
+llama_3_key = "1AROkExTzj6uweMBgylwoaozPLWpQYxS61yvWqrj"
 
 DB_PATH = "fx_trades.db"
 
@@ -420,23 +420,29 @@ def load_dark_theme_css():
     </style>
     """, unsafe_allow_html=True)
 
-
 def create_prompt(user_question: str) -> str:
     return f'''
-You are an expert SQL assistant that translates natural language questions into precise SQL queries based on this database schema:
+You are an expert SQL assistant. Your task is to convert natural language questions into accurate SQL queries using the schema below.
 
+### SCHEMA CONTEXT:
 {SCHEMA_CONTEXT}
 
-Follow these rules:
+### RESPONSE FORMAT:
+Respond strictly in the following JSON format:
+{{
+  "sql": "SQL query here (or empty string if clarification is needed)",
+  "clarification": "Ask for clarification if needed, otherwise leave empty",
+  "explanation": "Brief explanation of the query or why clarification is needed"
+}}
 
-- If the question is clear, generate only the SQL query without explanation.
-- If the question is ambiguous or incomplete, respond with a question asking the user for clarification.
-- Your output must be a JSON object with keys:
-  - "sql": the SQL query (or empty string if clarifying)
-  - "clarification": clarification question (or empty string if none)
-  - "explanation": short explanation of the query or what you want to clarify
+### GUIDELINES:
+- If the question is clear and answerable using the schema, generate the SQL query directly.
+- If the question is ambiguous or missing key details, ask for clarification.
+- Do not include any internal reasoning or commentary.
+- Do not explain your thought process — only return the structured JSON.
+- Prefer generating a reasonable SQL query over asking for clarification unless absolutely necessary.
 
-Examples:
+### EXAMPLES:
 
 Q: "Show total notional by product type."
 A:
@@ -446,53 +452,97 @@ A:
   "explanation": "Aggregates total notional amount grouped by FX product type."
 }}
 
-Q: "What are the trades?"
+Q: "Show me all the trades."
+A:
+{{
+  "sql": "SELECT * FROM trades;",
+  "clarification": "",
+  "explanation": "Returns all columns from the trades table."
+}}
+
+Q: "List trades with high notional."
 A:
 {{
   "sql": "",
-  "clarification": "Which trade attributes are you interested in? For example, product type, dates, or counterparties?",
-  "explanation": "The question is too broad, asking for clarification."
+  "clarification": "What threshold defines 'high notional'? Please specify a value.",
+  "explanation": "The term 'high notional' is subjective and needs clarification."
 }}
 
-Now answer the following question:
+### TASK:
+Generate the SQL query or ask for clarification based on the schema and the question below.
 
 Q: "{user_question}"
-A:
 '''
 
-def generate_sql(user_question: str) -> dict:
-    # Prepare the input prompt
-    prompt = create_prompt(user_question)
 
-    # Make the POST request to the model API
+def parse_model_response(response_text: str) -> dict:
+    """
+    Parses the model's response and validates the expected JSON structure.
+    Returns a dictionary with 'sql', 'clarification', and 'explanation'.
+    If parsing fails, returns a default structure with an error message.
+    """
+    try:
+        parsed = json.loads(response_text)
+        assert "sql" in parsed and "clarification" in parsed and "explanation" in parsed
+        return parsed
+    except Exception as e:
+        return {
+            "sql": "",
+            "clarification": "The AI response was not in the expected format. Please rephrase your question.",
+            "explanation": f"Parsing error: {str(e)}"
+        }
+
+
+def sanitize_sql(sql: str) -> str:
+    """
+    Checks for unsafe SQL commands and appends LIMIT if missing.
+    Raises ValueError if unsafe commands are detected.
+    """
+    forbidden = ["DROP", "DELETE", "ALTER"]
+    if any(cmd in sql.upper() for cmd in forbidden):
+        raise ValueError("Unsafe SQL command detected.")
+    return sql
+
+
+def generate_sql(user_question: str) -> dict:
+    """
+    Sends the user's question to the LLM, parses the response,
+    validates and sanitizes the SQL query, and returns a structured result.
+    """
+    prompt = create_prompt(user_question)
+    messages = [{"role": "user", "content": prompt}]
+
     response = requests.post(
-        f"{llama_3_70b_endpoint}/generate",  # Model REST endpoint for text generation
+        f"{llama_3_70b_endpoint}/v1/chat/completions",
         json={
-            "inputs": prompt,  # The formatted input question
-            "parameters": {
-                "max_tokens": 128  # Maximum number of tokens to generate
-            }
+            "messages": messages,
+            "model": "Qwen/Qwen3-30B-A3B",
+            "max_tokens": 10000
         },
         headers={
-            "Content-Type": "application/json",  # Set the content type in the headers
-            "x-api-key": llama_3_key  # Set the API key in the headers
+            "Content-Type": "application/json",
+            "x-api-key": llama_3_key
         }
     )
 
-    print("response", response)
-
-    # Check if the response is successful
     if response.status_code == 200:
-        # Return the generated SQL from the response
-        generated_sql = response.json().get("generated_text", "")
-        return {
-            "sql": generated_sql,
-            "clarification": "",
-            "explanation": "The SQL query generated above is based on your question."
-        }
-    else:
-        return { "sql": "", "clarification": f"Failed to generate SQL. Status code: {response.status_code}", "explanation": response.text }
+        raw_response = response.json()["choices"][0]["message"]["content"]
+        parsed = parse_model_response(raw_response)
 
+        try:
+            parsed["sql"] = sanitize_sql(parsed["sql"])
+        except ValueError as ve:
+            parsed["sql"] = ""
+            parsed["clarification"] = str(ve)
+            parsed["explanation"] = "Query rejected due to unsafe SQL."
+
+        return parsed
+    else:
+        return {
+            "sql": "",
+            "clarification": f"Failed to generate SQL. Status code: {response.status_code}",
+            "explanation": response.text
+        }
 
 def execute_sql(query: str):
     """Execute SQL query and return results"""
@@ -963,7 +1013,7 @@ def main():
             help="Ask any question about your FX trading data in natural language"
         )
         
-        col1, col2, col3 = st.columns([2, 1, 1])
+        col1, col2 = st.columns([2,2])
         
         with col1:
             if st.button("🚀 Generate SQL", type="primary"):
@@ -984,20 +1034,8 @@ def main():
                     st.rerun()
                 else:
                     st.warning("⚠️ Please enter a question")
-        
+
         with col2:
-            if st.button("🎲 Random Example"):
-                examples = [
-                    "Show total notional by product type",
-                    "Top 5 currency pairs by volume",
-                    "Trading activity by region",
-                    "Average rates by currency pair",
-                    "Largest trades last month"
-                ]
-                st.session_state.user_question = np.random.choice(examples)
-                st.rerun()
-        
-        with col3:
             if st.button("🔄 Reset"):
                 st.session_state.conversation_state = "asking"
                 st.session_state.user_question = ""
@@ -1092,7 +1130,7 @@ def main():
                 with st.spinner("⚡ Executing SQL query and preparing visualizations..."):
                     progress_bar = st.progress(0)
                     progress_bar.progress(25)
-                    
+                    print(result)
                     df, error = execute_sql(result["sql"])
                     progress_bar.progress(75)
                     
