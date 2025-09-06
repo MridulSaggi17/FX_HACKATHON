@@ -714,22 +714,22 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
     if df.empty:
         st.warning("📭 No data to visualize")
         return
-    
+
     # Get column information
     numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
     categorical_cols = df.select_dtypes(include=['object', 'string']).columns.tolist()
     all_cols = df.columns.tolist()
-    
+
     if not numeric_cols and not categorical_cols:
         st.info("📊 No visualizable columns found")
         return
-    
+
     st.markdown('<div class="visualization-container slide-up">', unsafe_allow_html=True)
     st.markdown("### 📊 Interactive Data Visualization")
-    
+
     # Create columns for controls
     control_col1, control_col2, control_col3 = st.columns(3)
-    
+
     with control_col1:
         chart_type = st.selectbox(
             "📈 Chart Type",
@@ -737,7 +737,7 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
             key=f"chart_type_{chart_key}",
             help="Choose the type of visualization"
         )
-    
+
     with control_col2:
         if numeric_cols:
             y_column = st.selectbox(
@@ -748,7 +748,7 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
             )
         else:
             y_column = None
-    
+
     with control_col3:
         if categorical_cols and chart_type in ["Bar Chart", "Line Chart", "Box Plot", "Pie Chart"]:
             x_column = st.selectbox(
@@ -766,11 +766,11 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
             )
         else:
             x_column = None
-    
+
     # Additional controls row
     if chart_type in ["Scatter Plot", "Bar Chart", "Line Chart"] and categorical_cols:
         color_col1, size_col1 = st.columns(2)
-        
+
         with color_col1:
             color_column = st.selectbox(
                 "🎨 Color By",
@@ -778,7 +778,7 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
                 key=f"color_col_{chart_key}",
                 help="Group data by color"
             )
-        
+
         with size_col1:
             if chart_type == "Scatter Plot" and numeric_cols:
                 size_column = st.selectbox(
@@ -792,11 +792,11 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
     else:
         color_column = None
         size_column = None
-    
+
     # Generate the chart based on selections
     try:
         fig = None
-        
+
         # Dark theme template for Plotly
         dark_template = {
             "layout": {
@@ -806,14 +806,14 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
                 "colorway": ["#64ffda", "#1de9b6", "#00bcd4", "#26c6da", "#4dd0e1", "#80deea", "#b2ebf2", "#e0f7fa"]
             }
         }
-        
+
         if chart_type == "Bar Chart" and x_column and y_column:
             # Aggregate data if needed
             if df[x_column].dtype == 'object':
                 agg_df = df.groupby(x_column)[y_column].sum().reset_index()
                 fig = px.bar(
-                    agg_df, 
-                    x=x_column, 
+                    agg_df,
+                    x=x_column,
                     y=y_column,
                     title=f"{y_column} by {x_column}",
                     color=x_column if not color_column else color_column,
@@ -821,19 +821,19 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
                 )
             else:
                 fig = px.bar(
-                    df, 
-                    x=x_column, 
+                    df,
+                    x=x_column,
                     y=y_column,
                     color=color_column,
                     title=f"{y_column} by {x_column}",
                     template="plotly_dark"
                 )
-        
+
         elif chart_type == "Line Chart" and y_column:
             if x_column:
                 fig = px.line(
-                    df, 
-                    x=x_column, 
+                    df,
+                    x=x_column,
                     y=y_column,
                     color=color_column,
                     title=f"{y_column} over {x_column}",
@@ -842,25 +842,25 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
                 )
             else:
                 fig = px.line(
-                    df.reset_index(), 
-                    x='index', 
+                    df.reset_index(),
+                    x='index',
                     y=y_column,
                     title=f"{y_column} Trend",
                     markers=True,
                     template="plotly_dark"
                 )
-        
+
         elif chart_type == "Scatter Plot" and x_column and y_column:
             fig = px.scatter(
-                df, 
-                x=x_column, 
+                df,
+                x=x_column,
                 y=y_column,
                 color=color_column,
                 size=size_column,
                 title=f"{y_column} vs {x_column}",
                 template="plotly_dark"
             )
-        
+
         elif chart_type == "Pie Chart" and x_column:
             # Create pie chart from value counts
             value_counts = df[x_column].value_counts()
@@ -870,12 +870,12 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
                 title=f"Distribution of {x_column}",
                 template="plotly_dark"
             )
-        
+
         elif chart_type == "Box Plot" and y_column:
             if x_column:
                 fig = px.box(
-                    df, 
-                    x=x_column, 
+                    df,
+                    x=x_column,
                     y=y_column,
                     color=color_column,
                     title=f"{y_column} Distribution by {x_column}",
@@ -883,22 +883,22 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
                 )
             else:
                 fig = px.box(
-                    df, 
+                    df,
                     y=y_column,
                     title=f"{y_column} Distribution",
                     template="plotly_dark"
                 )
-        
+
         elif chart_type == "Histogram" and y_column:
             fig = px.histogram(
-                df, 
+                df,
                 x=y_column,
                 color=color_column,
                 title=f"Distribution of {y_column}",
                 nbins=30,
                 template="plotly_dark"
             )
-        
+
         elif chart_type == "Heatmap" and len(numeric_cols) >= 2:
             # Create correlation heatmap
             corr_matrix = df[numeric_cols].corr()
@@ -910,7 +910,7 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
                 template="plotly_dark",
                 color_continuous_scale="RdBu_r"
             )
-        
+
         if fig:
             # Customize the figure with dark theme
             fig.update_layout(
@@ -923,29 +923,29 @@ def create_interactive_visualization(df: pd.DataFrame, chart_key: str = "main"):
                 plot_bgcolor="rgba(15, 15, 35, 0.8)",
                 colorway=["#64ffda", "#1de9b6", "#00bcd4", "#26c6da", "#4dd0e1", "#80deea", "#b2ebf2", "#e0f7fa"]
             )
-            
+
             # Update axes colors
             fig.update_xaxes(gridcolor="rgba(255, 255, 255, 0.1)", color="#e0e6ed")
             fig.update_yaxes(gridcolor="rgba(255, 255, 255, 0.1)", color="#e0e6ed")
-            
+
             # Display the chart
             st.plotly_chart(fig, use_container_width=True, key=f"chart_{chart_key}")
         else:
             st.warning("⚠️ Cannot create chart with selected parameters. Please try different columns.")
-    
+
     except Exception as e:
         st.error(f"❌ Error creating visualization: {str(e)}")
-    
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 def display_data_summary(df: pd.DataFrame):
     """Display data summary and statistics"""
     st.markdown('<div class="results-section slide-up">', unsafe_allow_html=True)
     st.markdown("### 📋 Data Summary")
-    
+
     # Basic metrics
     col1, col2, col3, col4 = st.columns(4)
-    
+
     with col1:
         st.markdown(f"""
         <div class="metric-card">
@@ -953,7 +953,7 @@ def display_data_summary(df: pd.DataFrame):
             <div class="metric-label">Total Rows</div>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown(f"""
         <div class="metric-card">
@@ -961,7 +961,7 @@ def display_data_summary(df: pd.DataFrame):
             <div class="metric-label">Columns</div>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col3:
         numeric_cols = len(df.select_dtypes(include=[np.number]).columns)
         st.markdown(f"""
@@ -970,7 +970,7 @@ def display_data_summary(df: pd.DataFrame):
             <div class="metric-label">Numeric Columns</div>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col4:
         categorical_cols = len(df.select_dtypes(include=['object', 'string']).columns)
         st.markdown(f"""
@@ -979,23 +979,23 @@ def display_data_summary(df: pd.DataFrame):
             <div class="metric-label">Text Columns</div>
         </div>
         """, unsafe_allow_html=True)
-    
+
     # Data preview
     st.markdown("### 📊 Data Preview")
-    
+
     # Style the dataframe for dark theme
     styled_df = df.style.set_properties(**{
         'background-color': 'rgba(26, 26, 46, 0.8)',
         'color': '#e0e6ed',
         'border-color': 'rgba(100, 255, 218, 0.2)'
     })
-    
+
     st.dataframe(df, use_container_width=True, height=300)
-    
+
     # Download options
     st.markdown("### 💾 Export Data")
     col1, col2 = st.columns(2)
-    
+
     with col1:
         csv = df.to_csv(index=False).encode('utf-8')
         st.download_button(
@@ -1005,7 +1005,7 @@ def display_data_summary(df: pd.DataFrame):
             mime="text/csv",
             use_container_width=True
         )
-    
+
     with col2:
         # JSON export
         json_data = df.to_json(orient='records', indent=2)
@@ -1016,7 +1016,7 @@ def display_data_summary(df: pd.DataFrame):
             mime="application/json",
             use_container_width=True
         )
-    
+
     st.markdown('</div>', unsafe_allow_html=True)
 
 def create_navigation():
@@ -1041,7 +1041,7 @@ def create_sidebar():
             <p style="color: #90a4ae; font-size: 0.9rem;">Explore your FX trading data</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         with st.expander("🏦 Trades Table", expanded=True):
             st.markdown("""
             **Core Fields:**
@@ -1055,7 +1055,7 @@ def create_sidebar():
             - `far_dt`: Far leg date (swaps)
             - `rate`: Executed FX rate
             """)
-        
+
         with st.expander("🏢 Counterparties Table"):
             st.markdown("""
             **Organization Data:**
@@ -1063,45 +1063,45 @@ def create_sidebar():
             - `cp_name`: Company name
             - `region`: Geographic region
             """)
-        
+
         st.markdown("---")
-        
+
         # Quick actions
         st.markdown("### ⚡ Quick Actions")
-        
+
         if st.button("🔄 Reset Query", use_container_width=True):
             for key in list(st.session_state.keys()):
                 if key.startswith(('conversation_state', 'user_question', 'query_data')):
                     del st.session_state[key]
             st.session_state.show_landing = True
             st.rerun()
-        
+
         if st.button("🏠 Back to Home", use_container_width=True):
             st.session_state.show_landing = True
             st.session_state.conversation_state = "asking"
             st.rerun()
-        
+
         st.markdown("---")
-        
+
         # Example queries
         st.markdown("### 💡 Example Queries")
         examples = [
             "Show total notional by product type",
-            "Top 5 currency pairs by volume", 
+            "Top 5 currency pairs by volume",
             "Trading activity by region",
             "Average rates by currency pair",
             "Monthly trading volumes",
             "Largest trades this month"
         ]
-        
+
         for example in examples:
             if st.button(example, key=f"sidebar_ex_{hash(example)}", use_container_width=True):
                 st.session_state.user_question = example
                 st.session_state.show_landing = False
                 st.rerun()
-        
+
         st.markdown("---")
-        
+
         # Stats
         st.markdown("""
         <div style="text-align: center; padding: 1rem; background: rgba(100, 255, 218, 0.1); border-radius: 12px; border: 1px solid rgba(100, 255, 218, 0.2);">
@@ -1117,12 +1117,12 @@ def create_typing_animation(text: str, key: str):
     """Create typing animation effect"""
     placeholder = st.empty()
     displayed_text = ""
-    
+
     for char in text:
         displayed_text += char
         placeholder.markdown(f"**{displayed_text}**<span class='loading-spinner'></span>", unsafe_allow_html=True)
         time.sleep(0.02)
-    
+
     placeholder.markdown(f"**{text}**")
 
 import streamlit as st
